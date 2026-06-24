@@ -1,0 +1,55 @@
+name: Build & deploy weather map
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: "Dataset to build (recent | historical | both)"
+        default: recent
+  schedule:
+    # Rebuild every day at 05:30 UTC to pick up fresh daily values.
+    - cron: "30 5 * * *"
+
+# Allow this workflow to publish to GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one concurrent deployment; let an in-progress run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Generate static site
+        env:
+          SMN_DATASET: ${{ github.event.inputs.dataset || 'recent' }}
+          THREADS: "16"
+          OUTPUT_DIR: public
+        run: ruby generate.rb
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
