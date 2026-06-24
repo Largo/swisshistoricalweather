@@ -47,6 +47,7 @@ CUTOFF_YEAR  = Time.now.utc.year - DAILY_YEARS + 1        # earliest year kept o
 COL_MIN  = 'tre200dn' # daily minimum 2 m air temperature
 COL_MAX  = 'tre200dx' # daily maximum 2 m air temperature
 COL_MEAN = 'tre200d0' # daily mean    2 m air temperature
+COL_HUM  = 'ure200d0' # daily mean relative air humidity (%)
 
 # ---------------------------------------------------------------------------
 # HTTP helper (follows redirects, small retry loop, returns body String or nil)
@@ -130,6 +131,7 @@ def parse_daily(csv)
   min_i  = idx[COL_MIN]
   max_i  = idx[COL_MAX]
   mean_i = idx[COL_MEAN]
+  hum_i  = idx[COL_HUM]
   return out unless ts_i && min_i && max_i
 
   lines.each do |line|
@@ -146,9 +148,10 @@ def parse_daily(csv)
     mn = num(f[min_i])
     mx = num(f[max_i])
     me = mean_i ? num(f[mean_i]) : nil
+    hu = hum_i ? num(f[hum_i]) : nil
     next if mn.nil? && mx.nil?
 
-    out[date] = { min: mn, max: mx, mean: me }
+    out[date] = { min: mn, max: mx, mean: me, hum: hu }
   end
   out
 end
@@ -158,14 +161,16 @@ end
 def reduce_to_annual(daily, acc)
   daily.each do |date, v|
     year = date[0, 4]
-    a = (acc[year] ||= { max: nil, maxdate: nil, min: nil, mindate: nil })
+    a = (acc[year] ||= { max: nil, maxdate: nil, maxhum: nil, min: nil, mindate: nil, minhum: nil })
     if v[:max] && (a[:max].nil? || v[:max] > a[:max])
       a[:max] = v[:max]
       a[:maxdate] = date
+      a[:maxhum] = v[:hum]
     end
     if v[:min] && (a[:min].nil? || v[:min] < a[:min])
       a[:min] = v[:min]
       a[:mindate] = date
+      a[:minhum] = v[:hum]
     end
   end
   acc
@@ -276,21 +281,22 @@ def build_annual_payload(stations, annual_results)
     a = annual_results[s[:id]]
     maxs = Array.new(years.size); mins = Array.new(years.size)
     maxd = Array.new(years.size); mind = Array.new(years.size)
+    maxh = Array.new(years.size); minh = Array.new(years.size)
     a.each do |year, r|
       i = idx[year]
-      maxs[i] = r[:max];  maxd[i] = r[:maxdate]
-      mins[i] = r[:min];  mind[i] = r[:mindate]
+      maxs[i] = r[:max];  maxd[i] = r[:maxdate];  maxh[i] = r[:maxhum]
+      mins[i] = r[:min];  mind[i] = r[:mindate];  minh[i] = r[:minhum]
     end
-    s.merge(max: maxs, min: mins, maxdate: maxd, mindate: mind)
+    s.merge(max: maxs, min: mins, maxdate: maxd, mindate: mind, maxhum: maxh, minhum: minh)
   end
 
-  # Country-wide hottest and coldest single day per year.
+  # Country-wide hottest and coldest single day per year (with that day's mean humidity).
   hottest = years.map do |year|
     best = nil
     present.each do |s|
       r = annual_results[s[:id]][year]
       next unless r && r[:max]
-      best = { d: r[:maxdate], v: r[:max], s: s[:name] } if best.nil? || r[:max] > best[:v]
+      best = { d: r[:maxdate], v: r[:max], h: r[:maxhum], s: s[:name] } if best.nil? || r[:max] > best[:v]
     end
     best
   end
@@ -299,7 +305,7 @@ def build_annual_payload(stations, annual_results)
     present.each do |s|
       r = annual_results[s[:id]][year]
       next unless r && r[:min]
-      best = { d: r[:mindate], v: r[:min], s: s[:name] } if best.nil? || r[:min] < best[:v]
+      best = { d: r[:mindate], v: r[:min], h: r[:minhum], s: s[:name] } if best.nil? || r[:min] < best[:v]
     end
     best
   end

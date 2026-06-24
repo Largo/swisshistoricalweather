@@ -183,8 +183,9 @@ function updateHeadline() {
   if (!rec) { el.classList.remove('show'); return; }
   const icon = metric === 'min' ? '❄️' : '🔥';
   const what = metric === 'min' ? 'Coldest' : 'Hottest';
+  const hum = rec.h != null ? ` <span class="muted">·</span> <b>${Math.round(rec.h)}%</b> <span class="muted">mean RH</span>` : '';
   el.innerHTML = `${icon} <span class="muted">${what} day of ${DATA.labels[idx]}:</span> ` +
-    `<b>${fmtDay(rec.d)}</b> — <b>${rec.v.toFixed(1)} °C</b> <span class="muted">at</span> <b>${rec.s}</b>`;
+    `<b>${fmtDay(rec.d)}</b> — <b>${rec.v.toFixed(1)} °C</b>${hum} <span class="muted">at</span> <b>${rec.s}</b>`;
   el.classList.add('show');
 }
 
@@ -208,9 +209,11 @@ function render() {
     let detail;
     if (AXIS === 'year') {
       const md = st.maxdate?.[idx], nd = st.mindate?.[idx];
+      const mh = st.maxhum?.[idx], nh = st.minhum?.[idx];
+      const hum = h => (h != null ? ` (${Math.round(h)}% RH)` : '');
       detail = `year ${label}<br>` +
-        `max <b>${fmtVal(st.max[idx])} °C</b>${md ? ` on ${fmtDay(md)}` : ''}<br>` +
-        `min <b>${fmtVal(st.min[idx])} °C</b>${nd ? ` on ${fmtDay(nd)}` : ''}`;
+        `max <b>${fmtVal(st.max[idx])} °C</b>${md ? ` on ${fmtDay(md)}` : ''}${hum(mh)}<br>` +
+        `min <b>${fmtVal(st.min[idx])} °C</b>${nd ? ` on ${fmtDay(nd)}` : ''}${hum(nh)}`;
     } else {
       detail = `${fmtLabel(label)}<br>` +
         `max <b>${fmtVal(st.max[idx])} °C</b> · min <b>${fmtVal(st.min[idx])} °C</b>`;

@@ -40,7 +40,9 @@ service (collection `ch.meteoschweiz.ogd-smn`), free to use with attribution:
 Both pages are built from the **daily** parameters `tre200dn` (daily min) and
 `tre200dx` (daily max), 2 m above ground. The annual extremes — and the date
 each one occurred — are computed by reducing the daily series per year, so the
-value and its day always agree.
+value and its day always agree. The mean relative humidity (`ure200d0`) of each
+extreme day is carried along too, and shown for the hottest/coldest day of the
+year and in each station's popup.
 
 ## Usage
 
