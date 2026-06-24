@@ -50,6 +50,16 @@
   .stat { font-size: 12px; color: var(--muted); }
   .stat b { color: var(--ink); font-variant-numeric: tabular-nums; }
 
+  /* Hottest/coldest-day banner (annual page) */
+  .headline {
+    background: linear-gradient(90deg, rgba(215,48,39,.18), rgba(26,32,39,0) 70%);
+    border-bottom: 1px solid var(--border); padding: 9px 18px; font-size: 14px;
+    display: none; align-items: center; gap: 8px;
+  }
+  .headline.show { display: flex; }
+  .headline b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .headline .muted { color: var(--muted); }
+
   .temp-label {
     font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.85);
     pointer-events: none; white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -70,8 +80,8 @@
 <header>
   <h1>🇨🇭 Swiss Weather Stations</h1>
   <nav>
-    <a href="index.html"<%= ' class="active"' if data[:axis] == 'date' %>>Daily</a>
-    <a href="annual.html"<%= ' class="active"' if data[:axis] == 'year' %>>Annual</a>
+    <a href="index.html"<%= ' class="active"' if data[:axis] == 'year' %>>Annual</a>
+    <a href="daily.html"<%= ' class="active"' if data[:axis] == 'date' %>>Daily</a>
   </nav>
   <span class="meta">
     <%= data[:subtitle] %> ·
@@ -79,6 +89,8 @@
     <a href="https://opendatadocs.meteoswiss.ch" target="_blank" rel="noopener">MeteoSwiss Open Data</a>
   </span>
 </header>
+
+<div class="headline" id="headline"></div>
 
 <div id="map"></div>
 
@@ -155,13 +167,26 @@ const markers = DATA.stations.map(st => {
   return { st, m };
 });
 
-function fmtLabel(label) {
-  if (AXIS === 'year') return label;
-  const [y,m,d] = label.split('-');
+function fmtDay(iso) {  // "YYYY-MM-DD" -> "Wed, 07 Aug 2024"
+  const [y,m,d] = iso.split('-');
   return new Date(Date.UTC(+y, +m-1, +d))
     .toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', year:'numeric', timeZone:'UTC' });
 }
+function fmtLabel(label) { return AXIS === 'year' ? label : fmtDay(label); }
 const fmtVal = v => (v == null ? '–' : v.toFixed(1));
+
+// Nationwide hottest/coldest single day for the selected year (annual page).
+function updateHeadline() {
+  const el = document.getElementById('headline');
+  if (AXIS !== 'year' || !DATA.hottest) { el.classList.remove('show'); return; }
+  const rec = (metric === 'min' ? DATA.coldest : DATA.hottest)[idx];
+  if (!rec) { el.classList.remove('show'); return; }
+  const icon = metric === 'min' ? '❄️' : '🔥';
+  const what = metric === 'min' ? 'Coldest' : 'Hottest';
+  el.innerHTML = `${icon} <span class="muted">${what} day of ${DATA.labels[idx]}:</span> ` +
+    `<b>${fmtDay(rec.d)}</b> — <b>${rec.v.toFixed(1)} °C</b> <span class="muted">at</span> <b>${rec.s}</b>`;
+  el.classList.add('show');
+}
 
 function render() {
   const label = DATA.labels[idx];
@@ -180,11 +205,21 @@ function render() {
     m.setStyle({ fillColor: tempColor(v), fillOpacity: 0.95, radius: 7 + Math.min(6, Math.abs(v)/6) });
     m.setTooltipContent(showValues ? `${v.toFixed(1)}` : '');
     m.getTooltip()?.setOpacity(showValues ? 1 : 0);
-    m.setPopupContent(
-      `<b>${st.name}</b> (${st.canton}) · ${st.alt} m a.s.l.<br>${fmtLabel(label)}<br>` +
-      `max <b>${fmtVal(st.max[idx])} °C</b> · min <b>${fmtVal(st.min[idx])} °C</b>`);
+    let detail;
+    if (AXIS === 'year') {
+      const md = st.maxdate?.[idx], nd = st.mindate?.[idx];
+      detail = `year ${label}<br>` +
+        `max <b>${fmtVal(st.max[idx])} °C</b>${md ? ` on ${fmtDay(md)}` : ''}<br>` +
+        `min <b>${fmtVal(st.min[idx])} °C</b>${nd ? ` on ${fmtDay(nd)}` : ''}`;
+    } else {
+      detail = `${fmtLabel(label)}<br>` +
+        `max <b>${fmtVal(st.max[idx])} °C</b> · min <b>${fmtVal(st.min[idx])} °C</b>`;
+    }
+    m.setPopupContent(`<b>${st.name}</b> (${st.canton}) · ${st.alt} m a.s.l.<br>${detail}`);
     lo = Math.min(lo, v); hi = Math.max(hi, v); sum += v; n++;
   }
+
+  updateHeadline();
 
   document.getElementById('stats').innerHTML = n
     ? `coldest <b>${lo.toFixed(1)}°</b> · warmest <b>${hi.toFixed(1)}°</b> · ` +

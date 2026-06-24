@@ -1,16 +1,17 @@
 # Generated output
 /public/
 
+# Bundler (local preview server)
+/.bundle/
+/vendor/bundle/
+
 # Local test / tooling artifacts
 /.playwright-mcp/
-/map.png
-/full.png
-/annual.png
-/annual-full.png
+/*.png
 /*.log
 /abo*.csv
 /abo*.json
 /params.csv
 /stations.csv
 
-# Keep docs/preview.png tracked (it is referenced by the README)
+# docs/*.png are tracked (referenced by the README); only root-level *.png are ignored

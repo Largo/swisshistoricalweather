@@ -5,9 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      dataset:
-        description: "Dataset to build (recent | historical | both)"
-        default: recent
+      daily_years:
+        description: "How many recent years the daily page covers"
+        default: "5"
   schedule:
     # Rebuild every day at 05:30 UTC to pick up fresh daily values.
     - cron: "30 5 * * *"
@@ -35,7 +35,7 @@ jobs:
 
       - name: Generate static site
         env:
-          SMN_DATASET: ${{ github.event.inputs.dataset || 'recent' }}
+          DAILY_YEARS: ${{ github.event.inputs.daily_years || '5' }}
           THREADS: "16"
           OUTPUT_DIR: public
         run: ruby generate.rb
