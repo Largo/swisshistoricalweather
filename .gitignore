@@ -5,6 +5,8 @@
 /.playwright-mcp/
 /map.png
 /full.png
+/annual.png
+/annual-full.png
 /*.log
 /abo*.csv
 /abo*.json

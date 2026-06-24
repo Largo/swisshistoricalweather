@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Swiss Weather Stations — Daily Temperature Map</title>
+<title>Swiss Weather Stations — <%= data[:title] %></title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
@@ -20,11 +20,16 @@
     display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
   }
   header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  nav { display: inline-flex; gap: 6px; margin-left: 4px; }
+  nav a {
+    font-size: 12px; padding: 4px 10px; border-radius: 7px; text-decoration: none;
+    color: var(--muted); border: 1px solid var(--border);
+  }
+  nav a.active { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 650; }
   header .meta { color: var(--muted); font-size: 12px; }
 
   #map { flex: 1 1 auto; min-height: 0; background: #0b0e12; }
 
-  /* Controls bar */
   .controls {
     background: var(--panel); border-top: 1px solid var(--border);
     padding: 12px 18px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
@@ -45,13 +50,11 @@
   .stat { font-size: 12px; color: var(--muted); }
   .stat b { color: var(--ink); font-variant-numeric: tabular-nums; }
 
-  /* Station marker labels */
   .temp-label {
     font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.85);
     pointer-events: none; white-space: nowrap; font-variant-numeric: tabular-nums;
   }
 
-  /* Legend */
   .legend {
     background: rgba(26,32,39,.92); color: var(--ink); padding: 8px 10px; border-radius: 8px;
     border: 1px solid var(--border); font-size: 11px; line-height: 1.5;
@@ -65,11 +68,15 @@
 </head>
 <body>
 <header>
-  <h1>🇨🇭 Swiss Weather Stations — Daily Temperature</h1>
+  <h1>🇨🇭 Swiss Weather Stations</h1>
+  <nav>
+    <a href="index.html"<%= ' class="active"' if data[:axis] == 'date' %>>Daily</a>
+    <a href="annual.html"<%= ' class="active"' if data[:axis] == 'year' %>>Annual</a>
+  </nav>
   <span class="meta">
+    <%= data[:subtitle] %> ·
     <span id="station-count"></span> stations ·
-    source: <a href="https://opendatadocs.meteoswiss.ch" target="_blank" rel="noopener">MeteoSwiss Open Data</a> ·
-    generated <%= data[:generated_at] %>
+    <a href="https://opendatadocs.meteoswiss.ch" target="_blank" rel="noopener">MeteoSwiss Open Data</a>
   </span>
 </header>
 
@@ -84,7 +91,7 @@
     <input type="range" id="slider" min="0" value="0" step="1">
   </div>
   <div class="group">
-    <label>Show</label>
+    <label><%= data[:metric_note] %></label>
     <div class="seg" id="metric">
       <button data-metric="max" class="active">Max °C</button>
       <button data-metric="min">Min °C</button>
@@ -100,6 +107,7 @@
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 const DATA = <%= data_json %>;
+const AXIS = DATA.axis; // "date" | "year"
 
 // ---- Color scale (RdYlBu reversed): temperature °C -> rgb ----------------
 const STOPS = [
@@ -108,6 +116,7 @@ const STOPS = [
   [15,  [254,224,144]],[20,  [253,174,97]], [25, [244,109,67]],
   [30,  [215,48,39]],  [38,  [165,0,38]]
 ];
+const rgb = a => `rgb(${a[0]},${a[1]},${a[2]})`;
 function tempColor(t) {
   if (t == null || Number.isNaN(t)) return '#5b6570';
   if (t <= STOPS[0][0]) return rgb(STOPS[0][1]);
@@ -121,27 +130,21 @@ function tempColor(t) {
   }
   return '#5b6570';
 }
-const rgb = a => `rgb(${a[0]},${a[1]},${a[2]})`;
 
 // ---- Map -----------------------------------------------------------------
 const map = L.map('map', { minZoom: 7, maxZoom: 12, zoomControl: true })
   .setView([46.8, 8.23], 8);
 map.setMaxBounds([[45.5, 5.5], [48.0, 11.0]]);
-
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap &copy; CARTO',
-  subdomains: 'abcd', maxZoom: 12
+  attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 12
 }).addTo(map);
 
 // ---- State ---------------------------------------------------------------
 let metric = 'max';
-let dayIndex = DATA.dates.length - 1;   // start at most recent day
-let playing = false, timer = null;
-let showValues = true;
-
+let idx = DATA.labels.length - 1;   // start at most recent label
+let playing = false, timer = null, showValues = true;
 document.getElementById('station-count').textContent = DATA.stations.length;
 
-// One circle marker + label per station, created once and restyled on update.
 const markers = DATA.stations.map(st => {
   const m = L.circleMarker([st.lat, st.lon], {
     radius: 8, weight: 1.2, color: '#11161c', fillOpacity: 0.95
@@ -152,50 +155,48 @@ const markers = DATA.stations.map(st => {
   return { st, m };
 });
 
+function fmtLabel(label) {
+  if (AXIS === 'year') return label;
+  const [y,m,d] = label.split('-');
+  return new Date(Date.UTC(+y, +m-1, +d))
+    .toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', year:'numeric', timeZone:'UTC' });
+}
+const fmtVal = v => (v == null ? '–' : v.toFixed(1));
+
 function render() {
-  const date = DATA.dates[dayIndex];
-  document.getElementById('date-readout').textContent = fmtDate(date);
-  document.getElementById('slider').value = dayIndex;
+  const label = DATA.labels[idx];
+  document.getElementById('date-readout').textContent = fmtLabel(label);
+  document.getElementById('slider').value = idx;
 
   let lo = Infinity, hi = -Infinity, sum = 0, n = 0;
   for (const { st, m } of markers) {
-    const v = st[metric][dayIndex];
+    const v = st[metric][idx];
     if (v == null) {
       m.setStyle({ fillColor: '#39424c', fillOpacity: 0.25, radius: 5 });
-      m.setTooltipContent('');
-      m.getTooltip()?.setOpacity(0);
-      m.setPopupContent(`<b>${st.name}</b> (${st.canton}) · ${st.alt} m<br>no data ${date}`);
+      m.setTooltipContent(''); m.getTooltip()?.setOpacity(0);
+      m.setPopupContent(`<b>${st.name}</b> (${st.canton}) · ${st.alt} m<br>no data ${fmtLabel(label)}`);
       continue;
     }
-    m.setStyle({ fillColor: tempColor(v), fillOpacity: 0.95,
-                 radius: 7 + Math.min(6, Math.abs(v)/6) });
+    m.setStyle({ fillColor: tempColor(v), fillOpacity: 0.95, radius: 7 + Math.min(6, Math.abs(v)/6) });
     m.setTooltipContent(showValues ? `${v.toFixed(1)}` : '');
     m.getTooltip()?.setOpacity(showValues ? 1 : 0);
     m.setPopupContent(
-      `<b>${st.name}</b> (${st.canton}) · ${st.alt} m a.s.l.<br>` +
-      `${fmtDate(date)}<br>` +
-      `max <b>${fmtVal(st.max[dayIndex])} °C</b> · min <b>${fmtVal(st.min[dayIndex])} °C</b>`);
+      `<b>${st.name}</b> (${st.canton}) · ${st.alt} m a.s.l.<br>${fmtLabel(label)}<br>` +
+      `max <b>${fmtVal(st.max[idx])} °C</b> · min <b>${fmtVal(st.min[idx])} °C</b>`);
     lo = Math.min(lo, v); hi = Math.max(hi, v); sum += v; n++;
   }
 
   document.getElementById('stats').innerHTML = n
     ? `coldest <b>${lo.toFixed(1)}°</b> · warmest <b>${hi.toFixed(1)}°</b> · ` +
       `mean <b>${(sum/n).toFixed(1)}°</b> · <b>${n}</b> reporting`
-    : 'no data for this day';
-}
-
-const fmtVal  = v => (v == null ? '–' : v.toFixed(1));
-function fmtDate(iso) {
-  const [y,m,d] = iso.split('-');
-  return new Date(Date.UTC(+y, +m-1, +d))
-    .toLocaleDateString('en-GB', { weekday:'short', day:'2-digit', month:'short', year:'numeric', timeZone:'UTC' });
+    : 'no data';
 }
 
 // ---- Controls ------------------------------------------------------------
 const slider = document.getElementById('slider');
-slider.max = DATA.dates.length - 1;
-slider.value = dayIndex;
-slider.addEventListener('input', e => { dayIndex = +e.target.value; render(); });
+slider.max = DATA.labels.length - 1;
+slider.value = idx;
+slider.addEventListener('input', e => { idx = +e.target.value; render(); });
 
 document.querySelectorAll('#metric button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -205,9 +206,7 @@ document.querySelectorAll('#metric button').forEach(btn => {
   });
 });
 
-document.getElementById('show-values').addEventListener('change', e => {
-  showValues = e.target.checked; render();
-});
+document.getElementById('show-values').addEventListener('change', e => { showValues = e.target.checked; render(); });
 
 const playBtn = document.getElementById('play');
 playBtn.addEventListener('click', () => {
@@ -215,18 +214,13 @@ playBtn.addEventListener('click', () => {
   playBtn.textContent = playing ? '⏸' : '▶';
   playBtn.classList.toggle('active', playing);
   if (playing) {
-    timer = setInterval(() => {
-      dayIndex = (dayIndex + 1) % DATA.dates.length;
-      render();
-    }, 350);
-  } else {
-    clearInterval(timer);
-  }
+    timer = setInterval(() => { idx = (idx + 1) % DATA.labels.length; render(); }, AXIS === 'year' ? 600 : 350);
+  } else { clearInterval(timer); }
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowLeft')  { dayIndex = Math.max(0, dayIndex-1); render(); }
-  if (e.key === 'ArrowRight') { dayIndex = Math.min(DATA.dates.length-1, dayIndex+1); render(); }
+  if (e.key === 'ArrowLeft')  { idx = Math.max(0, idx-1); render(); }
+  if (e.key === 'ArrowRight') { idx = Math.min(DATA.labels.length-1, idx+1); render(); }
 });
 
 // ---- Legend --------------------------------------------------------------
